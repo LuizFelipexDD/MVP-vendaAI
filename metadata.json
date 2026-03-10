@@ -1,0 +1,5 @@
+{
+  "name": "VendAI",
+  "description": "Assistente inteligente de vendas com histórico de conversas, quick replies e integração com n8n.",
+  "requestFramePermissions": []
+}
