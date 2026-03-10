@@ -1,210 +1,192 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useChatStore } from '../stores/chatStore';
-import { v4 as uuidv4 } from 'uuid';
 import toast from 'react-hot-toast';
 
-export function useChat() {
-  const { currentSessionId, addMessage, setIsTyping, messages, setMessages } = useChatStore();
+const MAX_MESSAGE_LENGTH = 4000;
+const MIN_INTERVAL_MS = 1000;
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY_MS = 1000;
+const REQUEST_TIMEOUT_MS = 120_000;
 
-  const sendMessage = useCallback(async (message: string) => {
-    if (!currentSessionId || !message.trim()) return;
+const toastStyle = {
+  borderRadius: '10px',
+  background: '#333',
+  color: '#fff',
+};
 
-    // Add user message locally
-    await addMessage({
-      sessionId: currentSessionId,
-      role: 'user',
-      content: message,
-    });
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  retries = MAX_RETRIES
+): Promise<Response> {
+  let lastError: Error | null = null;
 
-    setIsTyping(true);
-
+  for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      const webhookUrl = import.meta.env.VITE_WEBHOOK_URL;
-      
-      if (!webhookUrl) {
-        // Simulate response if no webhook is configured
-        setTimeout(async () => {
-          await addMessage({
-            sessionId: currentSessionId,
-            role: 'assistant',
-            content: 'Esta é uma resposta simulada. Configure a variável `VITE_WEBHOOK_URL` no arquivo `.env` para conectar ao seu n8n.',
-            quickReplies: ['Entendi', 'Como configurar?']
-          });
-          setIsTyping(false);
-        }, 1500);
+      const response = await fetch(url, options);
+      if (response.ok) return response;
+
+      // Don't retry client errors (4xx)
+      if (response.status >= 400 && response.status < 500) {
+        throw new Error(`Erro do servidor: ${response.status}`);
+      }
+
+      lastError = new Error(`HTTP ${response.status}`);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw err; // Don't retry timeouts
+      }
+    }
+
+    if (attempt < retries - 1) {
+      const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError ?? new Error('Falha na requisição');
+}
+
+export function useChat() {
+  const { currentSessionId, addMessage, setIsTyping } = useChatStore();
+  const lastSentRef = useRef<number>(0);
+
+  const sendMessage = useCallback(
+    async (message: string) => {
+      if (!currentSessionId || !message.trim()) return;
+
+      // --- Input validation ---
+      const trimmed = message.trim();
+      if (trimmed.length > MAX_MESSAGE_LENGTH) {
+        toast.error(`Mensagem muito longa (máx. ${MAX_MESSAGE_LENGTH} caracteres).`, {
+          style: toastStyle,
+        });
         return;
       }
 
-      const response = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'text/event-stream, application/json',
-        },
-        body: JSON.stringify({
-          sessionId: currentSessionId,
-          message,
-          action: 'send',
-        }),
+      // --- Rate limiting ---
+      const now = Date.now();
+      if (now - lastSentRef.current < MIN_INTERVAL_MS) {
+        toast.error('Aguarde um momento antes de enviar outra mensagem.', {
+          style: toastStyle,
+        });
+        return;
+      }
+      lastSentRef.current = now;
+
+      // --- Add user message locally ---
+      await addMessage({
+        sessionId: currentSessionId,
+        role: 'user',
+        content: trimmed,
       });
 
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
+      // --- Auto-generate conversation title from first message ---
+      const store = useChatStore.getState();
+      const session = store.sessions.find((s) => s.id === currentSessionId);
+      if (session && session.preview === 'Nova conversa iniciada') {
+        const title =
+          trimmed.length > 40 ? trimmed.substring(0, 37) + '...' : trimmed;
+        await store.updateSessionTitle(currentSessionId, title);
       }
 
-      const contentType = response.headers.get('content-type');
-      
-      if (contentType && contentType.includes('text/event-stream')) {
-        // Handle SSE
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-        let assistantMessageId = uuidv4();
-        let currentContent = '';
-        let quickReplies: string[] = [];
-        
-        // Add an empty assistant message to update
-        useChatStore.setState((state) => ({
-          messages: [
-            ...state.messages,
-            {
-              id: assistantMessageId,
-              sessionId: currentSessionId,
-              role: 'assistant',
-              content: '',
-              timestamp: Date.now(),
-            }
-          ]
-        }));
-        
-        setIsTyping(false);
+      setIsTyping(true);
 
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n');
-            
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                try {
-                  const data = JSON.parse(line.slice(6));
-                  if (data.content) {
-                    currentContent += data.content;
-                  }
-                  if (data.quickReplies) {
-                    quickReplies = data.quickReplies;
-                  }
-                  
-                  // Update the message in the store
-                  useChatStore.setState((state) => ({
-                    messages: state.messages.map(msg => 
-                      msg.id === assistantMessageId 
-                        ? { ...msg, content: currentContent, quickReplies } 
-                        : msg
-                    )
-                  }));
-                } catch (e) {
-                  // If it's not JSON, maybe it's just text chunks
-                  currentContent += line.slice(6);
-                  useChatStore.setState((state) => ({
-                    messages: state.messages.map(msg => 
-                      msg.id === assistantMessageId 
-                        ? { ...msg, content: currentContent } 
-                        : msg
-                    )
-                  }));
-                }
-              }
-            }
-          }
-          
-          // Save the final message to DB
-          const finalMessages = useChatStore.getState().messages;
-          const finalMessage = finalMessages.find(m => m.id === assistantMessageId);
-          if (finalMessage) {
-            const { db } = await import('../db/database');
-            await db.messages.add(finalMessage);
-            await useChatStore.getState().updateSessionPreview(currentSessionId, finalMessage.content);
-          }
-        }
-      } else {
-        // Handle normal JSON response
-        const data = await response.json();
-        setIsTyping(false);
-        
-        if (data.messages && Array.isArray(data.messages)) {
-          for (const msg of data.messages) {
+      try {
+        const webhookUrl = import.meta.env.VITE_WEBHOOK_URL;
+
+        if (!webhookUrl) {
+          // Simulated response when no webhook is configured
+          setTimeout(async () => {
             await addMessage({
               sessionId: currentSessionId,
-              role: msg.role || 'assistant',
-              content: msg.content,
-              quickReplies: msg.quickReplies,
+              role: 'assistant',
+              content:
+                '⚠️ Webhook não configurado. Defina `VITE_WEBHOOK_URL` no arquivo `.env` para conectar ao n8n.\n\nExemplo:\n```\nVITE_WEBHOOK_URL=http://localhost:5678/webhook/SEU-WEBHOOK-ID/chat\n```',
+              quickReplies: ['Como configurar?'],
             });
+            setIsTyping(false);
+          }, 1000);
+          return;
+        }
+
+        // --- Build request for n8n Chat Trigger ---
+        const controller = new AbortController();
+        const timeout = setTimeout(
+          () => controller.abort(),
+          REQUEST_TIMEOUT_MS
+        );
+
+        try {
+          const response = await fetchWithRetry(
+            webhookUrl,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                chatInput: trimmed,
+                sessionId: currentSessionId,
+              }),
+              signal: controller.signal,
+            }
+          );
+
+          const data = await response.json();
+
+          // --- Parse n8n Chat Trigger response ---
+          // The n8n Chat Trigger returns { output: "response text" }
+          let assistantContent = '';
+
+          if (typeof data === 'string') {
+            assistantContent = data;
+          } else if (data.output) {
+            assistantContent = data.output;
+          } else if (data.text) {
+            assistantContent = data.text;
+          } else if (data.response) {
+            assistantContent = data.response;
+          } else if (data.content) {
+            assistantContent = data.content;
+          } else if (data.message) {
+            assistantContent = typeof data.message === 'string' ? data.message : JSON.stringify(data.message);
+          } else {
+            // Fallback: stringify the entire response
+            assistantContent = JSON.stringify(data, null, 2);
           }
-        } else if (data.content) {
+
           await addMessage({
             sessionId: currentSessionId,
             role: 'assistant',
-            content: data.content,
-            quickReplies: data.quickReplies,
+            content: assistantContent,
           });
+        } finally {
+          clearTimeout(timeout);
         }
-      }
-    } catch (error) {
-      console.error('Error sending message:', error);
-      toast.error('Ops, tente novamente. Falha na conexão.', {
-        style: {
-          borderRadius: '10px',
-          background: '#333',
-          color: '#fff',
-        },
-      });
-      // Mock response for testing if webhook is not available
-      setTimeout(async () => {
+      } catch (error) {
+        console.error('Error sending message to n8n:', error);
+
+        const isTimeout =
+          error instanceof DOMException && error.name === 'AbortError';
+        const errorMessage = isTimeout
+          ? 'A requisição expirou. O agente pode estar demorando para processar. Tente novamente.'
+          : 'Falha na conexão com o servidor. Verifique se o n8n está rodando e tente novamente.';
+
+        toast.error(errorMessage, { style: toastStyle, duration: 5000 });
+
         await addMessage({
           sessionId: currentSessionId,
           role: 'assistant',
-          content: 'Desculpe, estou com problemas para conectar ao servidor. Tente novamente mais tarde.',
+          content: `⚠️ ${errorMessage}`,
         });
+      } finally {
         setIsTyping(false);
-      }, 1000);
-    } finally {
-      setIsTyping(false);
-    }
-  }, [currentSessionId, addMessage, setIsTyping]);
-
-  const loadPreviousSession = useCallback(async (sessionId: string) => {
-    try {
-      const webhookUrl = import.meta.env.VITE_WEBHOOK_URL;
-      
-      if (!webhookUrl) return;
-
-      const response = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sessionId,
-          action: 'loadPreviousSession',
-          loadPreviousSession: true
-        }),
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.messages && Array.isArray(data.messages)) {
-          // Sync messages from n8n if needed
-          // For now, we rely on local DB, but we could merge them
-        }
       }
-    } catch (error) {
-      console.error('Error notifying n8n of session load:', error);
-      toast.error('Erro ao carregar histórico do servidor.');
-    }
-  }, []);
+    },
+    [currentSessionId, addMessage, setIsTyping]
+  );
 
-  return { sendMessage, loadPreviousSession };
+  return { sendMessage };
 }

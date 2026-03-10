@@ -9,7 +9,7 @@ interface ChatState {
   isLoading: boolean;
   isTyping: boolean;
   isSidebarOpen: boolean;
-  
+
   // Actions
   setSessions: (sessions: Session[]) => void;
   setCurrentSessionId: (id: string | null) => void;
@@ -17,13 +17,14 @@ interface ChatState {
   setIsLoading: (loading: boolean) => void;
   setIsTyping: (typing: boolean) => void;
   toggleSidebar: () => void;
-  
+
   // Thunks
   loadSessions: () => Promise<void>;
   createNewSession: () => Promise<void>;
   loadSession: (sessionId: string) => Promise<void>;
   addMessage: (message: Omit<Message, 'id' | 'timestamp'>) => Promise<void>;
   updateSessionPreview: (sessionId: string, preview: string) => Promise<void>;
+  updateSessionTitle: (sessionId: string, title: string) => Promise<void>;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -48,35 +49,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   createNewSession: async () => {
     const newSessionId = uuidv4();
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('pt-BR', {
+      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+    });
     const newSession: Session = {
       id: newSessionId,
-      title: `Conversa em ${new Date().toLocaleDateString()}`,
+      title: `Conversa ${dateStr}`,
       preview: 'Nova conversa iniciada',
       updatedAt: Date.now(),
     };
-    
+
     await db.sessions.add(newSession);
     await get().loadSessions();
-    
-    set({ currentSessionId: newSessionId, messages: [], isSidebarOpen: false });
 
-    // Notify n8n of new session
-    try {
-      const webhookUrl = import.meta.env.VITE_WEBHOOK_URL;
-      if (webhookUrl) {
-        fetch(webhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: newSessionId,
-            action: 'loadPreviousSession',
-            loadPreviousSession: false
-          }),
-        }).catch(console.error);
-      }
-    } catch (e) {
-      console.error(e);
-    }
+    set({ currentSessionId: newSessionId, messages: [], isSidebarOpen: false });
   },
 
   loadSession: async (sessionId: string) => {
@@ -98,10 +85,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       id: uuidv4(),
       timestamp: Date.now(),
     };
-    
+
     await db.messages.add(newMessage);
     set((state) => ({ messages: [...state.messages, newMessage] }));
-    
+
     // Update session preview
     await get().updateSessionPreview(msgData.sessionId, msgData.content);
   },
@@ -113,5 +100,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       updatedAt: Date.now(),
     });
     await get().loadSessions();
-  }
+  },
+
+  updateSessionTitle: async (sessionId, title) => {
+    await db.sessions.update(sessionId, { title });
+    await get().loadSessions();
+  },
 }));
