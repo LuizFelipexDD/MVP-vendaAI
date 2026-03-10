@@ -195,22 +195,5 @@ MVP-VendAI/
 | **Banco de Dados** | PostgreSQL + pgvector | Armazenamento e busca vetorial |
 | **Embeddings** | Gemini Embedding 001 | Vetorização de produtos |
 
-## 🤝 Contribuindo
 
-1. Faça um fork do projeto
-2. Crie uma branch para sua feature (`git checkout -b feature/minha-feature`)
-3. Commit suas mudanças (`git commit -m 'feat: adiciona minha feature'`)
-4. Push para a branch (`git push origin feature/minha-feature`)
-5. Abra um Pull Request
 
-## 📄 Licença
-
-Este projeto está sob a licença Apache 2.0. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
-
----
-
-<div align="center">
-
-Feito com ❤️ por **Luiz Felipe**
-
-</div>
