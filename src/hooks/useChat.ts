@@ -6,7 +6,7 @@ const MAX_MESSAGE_LENGTH = 4000;
 const MIN_INTERVAL_MS = 1000;
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 1000;
-const REQUEST_TIMEOUT_MS = 120_000;
+const REQUEST_TIMEOUT_MS = 60_000;
 
 const toastStyle = {
   borderRadius: '10px',
@@ -46,6 +46,38 @@ async function fetchWithRetry(
   }
 
   throw lastError ?? new Error('Falha na requisição');
+}
+
+interface WebhookResponse {
+  output?: unknown;
+  text?: unknown;
+  response?: unknown;
+  content?: unknown;
+  message?: unknown;
+}
+
+function extractResponseText(data: unknown): string | null {
+  if (typeof data === 'string') return data;
+  if (!data || typeof data !== 'object') return null;
+
+  const record = data as WebhookResponse;
+  const candidates: (keyof WebhookResponse)[] = [
+    'output',
+    'text',
+    'response',
+    'content',
+    'message',
+  ];
+
+  for (const key of candidates) {
+    const value = record[key];
+    if (typeof value === 'string') return value;
+    if (value && typeof value === 'object') {
+      return JSON.stringify(value);
+    }
+  }
+
+  return null;
 }
 
 export function useChat() {
@@ -94,22 +126,8 @@ export function useChat() {
       setIsTyping(true);
 
       try {
-        const webhookUrl = import.meta.env.VITE_WEBHOOK_URL;
-
-        if (!webhookUrl) {
-          // Simulated response when no webhook is configured
-          setTimeout(async () => {
-            await addMessage({
-              sessionId: currentSessionId,
-              role: 'assistant',
-              content:
-                '⚠️ Webhook não configurado. Defina `VITE_WEBHOOK_URL` no arquivo `.env` para conectar ao n8n.\n\nExemplo:\n```\nVITE_WEBHOOK_URL=http://localhost:5678/webhook/SEU-WEBHOOK-ID/chat\n```',
-              quickReplies: ['Como configurar?'],
-            });
-            setIsTyping(false);
-          }, 1000);
-          return;
-        }
+        const proxyBaseUrl = import.meta.env.VITE_PROXY_API_URL?.trim();
+        const apiUrl = proxyBaseUrl ? `${proxyBaseUrl}/api/chat` : '/api/chat';
 
         // --- Build request for n8n Chat Trigger ---
         const controller = new AbortController();
@@ -120,14 +138,14 @@ export function useChat() {
 
         try {
           const response = await fetchWithRetry(
-            webhookUrl,
+            apiUrl,
             {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                chatInput: trimmed,
+                message: trimmed,
                 sessionId: currentSessionId,
               }),
               signal: controller.signal,
@@ -138,23 +156,9 @@ export function useChat() {
 
           // --- Parse n8n Chat Trigger response ---
           // The n8n Chat Trigger returns { output: "response text" }
-          let assistantContent = '';
-
-          if (typeof data === 'string') {
-            assistantContent = data;
-          } else if (data.output) {
-            assistantContent = data.output;
-          } else if (data.text) {
-            assistantContent = data.text;
-          } else if (data.response) {
-            assistantContent = data.response;
-          } else if (data.content) {
-            assistantContent = data.content;
-          } else if (data.message) {
-            assistantContent = typeof data.message === 'string' ? data.message : JSON.stringify(data.message);
-          } else {
-            // Fallback: stringify the entire response
-            assistantContent = JSON.stringify(data, null, 2);
+          const assistantContent = extractResponseText(data);
+          if (!assistantContent) {
+            throw new Error('Resposta inválida do servidor');
           }
 
           await addMessage({
@@ -168,11 +172,7 @@ export function useChat() {
       } catch (error) {
         console.error('Error sending message to n8n:', error);
 
-        const isTimeout =
-          error instanceof DOMException && error.name === 'AbortError';
-        const errorMessage = isTimeout
-          ? 'A requisição expirou. O agente pode estar demorando para processar. Tente novamente.'
-          : 'Falha na conexão com o servidor. Verifique se o n8n está rodando e tente novamente.';
+        const errorMessage = 'Falha ao enviar mensagem. Tente novamente.';
 
         toast.error(errorMessage, { style: toastStyle, duration: 5000 });
 

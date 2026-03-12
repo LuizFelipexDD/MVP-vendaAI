@@ -2,6 +2,13 @@ import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { db, Message, Session } from '../db/database';
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isValidUuid(id: string | null): id is string {
+  return typeof id === 'string' && UUID_REGEX.test(id);
+}
+
 interface ChatState {
   sessions: Session[];
   currentSessionId: string | null;
@@ -67,6 +74,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   loadSession: async (sessionId: string) => {
+    if (!isValidUuid(sessionId)) return;
     set({ isLoading: true, currentSessionId: sessionId, isSidebarOpen: false });
     try {
       const messages = await db.messages
@@ -80,6 +88,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   addMessage: async (msgData) => {
+    if (!isValidUuid(msgData.sessionId)) return;
     const newMessage: Message = {
       ...msgData,
       id: uuidv4(),
@@ -94,6 +103,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   updateSessionPreview: async (sessionId, preview) => {
+    if (!isValidUuid(sessionId)) return;
     const truncatedPreview = preview.length > 50 ? preview.substring(0, 47) + '...' : preview;
     await db.sessions.update(sessionId, {
       preview: truncatedPreview,
@@ -103,6 +113,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   updateSessionTitle: async (sessionId, title) => {
+    if (!isValidUuid(sessionId)) return;
     await db.sessions.update(sessionId, { title });
     await get().loadSessions();
   },

@@ -44,7 +44,12 @@ export function MessageBubble({ text, sender, timestamp }: MessageBubbleProps) {
     setFeedback('down');
   };
 
-  const sanitizedText = DOMPurify.sanitize(text);
+  const sanitizedText = DOMPurify.sanitize(text, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'a'],
+    ALLOWED_ATTR: ['href', 'class'],
+    FORBID_ATTR: ['onclick', 'onerror', 'onload', 'style'],
+    FORCE_BODY: false,
+  });
 
   return (
     <motion.div

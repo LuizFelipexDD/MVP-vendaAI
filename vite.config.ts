@@ -5,6 +5,14 @@ import {defineConfig, loadEnv} from 'vite';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
+  const securityHeaders = {
+    'Content-Security-Policy':
+      "default-src 'self'; connect-src 'self' http://localhost:* ws://localhost:*; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';",
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
+  };
   return {
     plugins: [react(), tailwindcss()],
     define: {
@@ -17,8 +25,18 @@ export default defineConfig(({mode}) => {
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
+      // Do not modify - file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
+      headers: securityHeaders,
+      proxy: {
+        '/api': {
+          target: env.PROXY_TARGET || 'http://localhost:8787',
+          changeOrigin: true,
+        },
+      },
+    },
+    preview: {
+      headers: securityHeaders,
     },
   };
 });

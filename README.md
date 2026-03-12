@@ -102,7 +102,8 @@ npm install
 cp .env.example .env
 # Edite o .env com suas configurações (veja seção abaixo)
 
-# 4. Inicie o servidor de desenvolvimento
+# 4. Inicie o servidor proxy e o frontend
+npm run server
 npm run dev
 ```
 
@@ -116,7 +117,11 @@ Crie um arquivo `.env` na raiz do projeto (ou copie de `.env.example`):
 
 | Variável | Descrição | Exemplo |
 |----------|-----------|---------|
-| `VITE_WEBHOOK_URL` | URL do Chat Trigger do n8n | `http://localhost:5678/webhook/<ID>/chat` |
+| `WEBHOOK_URL` | URL do Chat Trigger do n8n (proxy) | `http://localhost:5678/webhook/<ID>/chat` |
+| `VITE_PROXY_API_URL` | URL base do servidor proxy | `http://localhost:8787` |
+| `PROXY_PORT` | Porta do servidor proxy | `8787` |
+| `PROXY_ALLOWED_ORIGIN` | Origem permitida no proxy | `http://localhost:3000` |
+| `PROXY_TARGET` | Alvo do proxy do Vite (dev) | `http://localhost:8787` |
 
 > **Como encontrar o Webhook ID:** Abra o workflow no n8n → clique no nó "Chat Trigger" → o ID está na URL do webhook.
 
