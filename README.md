@@ -24,14 +24,14 @@
 
 ## 📋 Sobre
 
-O **VendAI** é um MVP de assistente de vendas conversacional para pneus automotivos. Ele combina uma interface de chat moderna em React com um fluxo agêntico de IA no **n8n**, utilizando **RAG (Retrieval-Augmented Generation)** com busca vetorial para encontrar produtos relevantes no banco de dados.
+O **VendAI** é um MVP de assistente de vendas conversacional para pastilhas de freio automotivas. Ele combina uma interface de chat moderna em React com um fluxo agêntico de IA no **n8n**, utilizando **RAG (Retrieval-Augmented Generation)** com busca vetorial para encontrar produtos relevantes no banco de dados.
 
-O agente interpreta a linguagem natural do cliente — incluindo medidas, marcas, modelos e até erros de digitação — e retorna informações precisas sobre pneus disponíveis, preços e especificações técnicas.
+O agente interpreta a linguagem natural do cliente — incluindo aplicações por veículo, marcas, posição (dianteira/traseira) e até erros de digitação — e retorna informações precisas sobre as pastilhas disponíveis, preços e especificações técnicas.
 
 ## ✨ Funcionalidades
 
 - 💬 **Chat em tempo real** com interface responsiva e animações fluidas
-- 🧠 **Agente IA** com prompt especializado em consultoria de pneus
+- 🧠 **Agente IA** com prompt especializado em consultoria de pastilhas de freio
 - 🔍 **Busca vetorial (RAG)** via PGVector para encontrar produtos por similaridade semântica
 - 📝 **Histórico de conversas** persistido localmente via IndexedDB (Dexie)
 - 🔄 **Memória de sessão** — o agente mantém contexto durante a conversa (via Postgres)
@@ -74,7 +74,7 @@ O agente interpreta a linguagem natural do cliente — incluindo medidas, marcas
                             ▼
 ┌──────────────────────────────────────────────────────────────┐
 │  PostgreSQL + pgvector                                       │
-│  Tabela: produtos (nome, marca, modelo, medida, preço,       │
+│  Tabela: produtos (nome, marca, aplicacao, posicao, preco,   │
 │          tecnologia, observações, conteudo_para_embedding)    │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -138,15 +138,15 @@ O workflow deve conter:
 
 1. Acesse `http://localhost:3000`
 2. Clique em **"Nova Conversa"** na barra lateral
-3. Digite sua mensagem (ex: *"Quais pneus 205/55R16 vocês têm?"*)
+3. Digite sua mensagem (ex: *"Quais pastilhas de freio para o meu HB20 vocês têm?"*)
 4. O agente buscará no banco de dados e responderá com os produtos encontrados
 
 ### Exemplos de perguntas
 
-- `"Tem pneu Pirelli aro 17?"`
-- `"Quanto custa o 235/45R19?"`
-- `"Quais pneus run flat vocês trabalham?"`
-- `"Preciso de pneu pro meu Civic 2024"`
+- `"Tem pastilha dianteira para Corolla 2020?"`
+- `"Quanto custa a pastilha Bosch para Onix?"`
+- `"Quais pastilhas cerâmicas vocês trabalham?"`
+- `"Preciso de pastilha traseira para meu Jeep Renegade 2022"`
 
 ## 📁 Estrutura do Projeto
 
@@ -199,6 +199,3 @@ MVP-VendAI/
 | **LLM** | Google Gemini | Modelo de linguagem |
 | **Banco de Dados** | PostgreSQL + pgvector | Armazenamento e busca vetorial |
 | **Embeddings** | Gemini Embedding 001 | Vetorização de produtos |
-
-
-
