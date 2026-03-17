@@ -32,6 +32,7 @@ interface ChatState {
   addMessage: (message: Omit<Message, 'id' | 'timestamp'>) => Promise<void>;
   updateSessionPreview: (sessionId: string, preview: string) => Promise<void>;
   updateSessionTitle: (sessionId: string, title: string) => Promise<void>;
+  deleteSession: (sessionId: string) => Promise<void>;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -116,5 +117,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!isValidUuid(sessionId)) return;
     await db.sessions.update(sessionId, { title });
     await get().loadSessions();
+  },
+
+  deleteSession: async (sessionId) => {
+    if (!isValidUuid(sessionId)) return;
+
+    // Delete all messages from the session
+    await db.messages.where('sessionId').equals(sessionId).delete();
+
+    // Delete the session
+    await db.sessions.delete(sessionId);
+
+    // Reload sessions list
+    await get().loadSessions();
+
+    // If the deleted session was the current one, clear the current state
+    if (get().currentSessionId === sessionId) {
+      set({ currentSessionId: null, messages: [] });
+    }
   },
 }));

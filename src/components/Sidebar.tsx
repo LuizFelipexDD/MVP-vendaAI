@@ -1,17 +1,18 @@
 import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, MessageSquare, X } from 'lucide-react';
+import { Plus, MessageSquare, X, Trash2 } from 'lucide-react';
 import { useChatStore } from '../stores/chatStore';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 export function Sidebar() {
-  const { 
-    sessions, 
-    currentSessionId, 
-    loadSessions, 
-    createNewSession, 
+  const {
+    sessions,
+    currentSessionId,
+    loadSessions,
+    createNewSession,
     loadSession,
+    deleteSession,
     isSidebarOpen,
     toggleSidebar
   } = useChatStore();
@@ -76,9 +77,21 @@ export function Sidebar() {
             >
               <div className="flex items-center justify-between">
                 <span className="font-medium text-sm truncate pr-2">{session.title}</span>
-                <span className="text-xs text-gray-500 whitespace-nowrap">
-                  {format(session.updatedAt, 'dd/MM', { locale: ptBR })}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 whitespace-nowrap">
+                    {format(session.updatedAt, 'dd/MM', { locale: ptBR })}
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteSession(session.id);
+                    }}
+                    className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
+                    title="Excluir conversa"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
               <p className="text-xs text-gray-500 truncate">{session.preview}</p>
             </button>
